@@ -1,0 +1,8 @@
+[server]
+headless = true
+
+[theme]
+primaryColor = "#007acc"
+
+[python]
+version = "3.10"
