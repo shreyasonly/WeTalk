@@ -1,22 +1,23 @@
-fastapi
-uvicorn
-openai-whisper
-language-tool-python
-librosa
-noisereduce
-pydub
-soundfile
-google-generativeai
-boto3
-pyjwt
-jose
-streamlit
-torch==2.3.0
-streamlit
-language-tool-python
-librosa
-noisereduce
-soundfile
-google-generativeai
-pydub
-openai-whisper
+# Streamlit frontend
+streamlit==1.35.0
+
+# Whisper and dependencies
+openai-whisper==20230918
+torch==2.1.2
+numpy==1.26.4
+ffmpeg-python==0.2.0
+
+# Audio processing
+librosa==0.10.1
+pydub==0.25.1
+soundfile==0.12.1
+noisereduce==3.0.1
+
+# Grammar correction
+language-tool-python==2.7.1
+
+# Gemini API (Google Generative AI)
+google-generativeai==0.5.4
+
+# General utilities
+tqdm==4.66.2
