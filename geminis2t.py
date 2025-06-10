@@ -313,24 +313,24 @@
 # if __name__ == "__main__":
 #     main()
 
+# gemini_transcriber.py
 import streamlit as st
 import tempfile
 import os
+import re
 import base64
 import librosa
 import soundfile as sf
-from pydub import AudioSegment
-from noisereduce import reduce_noise
-import re
 import language_tool_python
+from noisereduce import reduce_noise
 from google.generativeai import GenerativeModel, configure
+from pydub import AudioSegment
 
-# ------------------ GEMINI SETUP ------------------
-API_KEY = "AIzaSyDDlG2xtuTEuYci3tNTkMSPtLue9u3aURI"  # Replace with your API Key
+# GEMINI SETUP
+API_KEY = "AIzaSyDDlG2xtuTEuYci3tNTkMSPtLue9u3aURI"
 configure(api_key=API_KEY)
 
-# ------------------ HELPER FUNCTIONS ------------------
-
+# Helper Functions
 def convert_to_wav(input_audio_path, output_audio_path):
     audio = AudioSegment.from_file(input_audio_path)
     audio = audio.set_frame_rate(16000).set_channels(1)
@@ -357,6 +357,25 @@ def split_audio(input_audio_path, segment_duration=300):
 
     return segments
 
+def process_transcription(transcription):
+    commands = {
+        r"\bfull stop\b": ".",
+        r"\bPull stop\b": ".",
+        r"\bnext para\b": "\n",
+        r"\bnext paragraph\b": "\n",
+        r"\bcomma\b": ",",
+        r"\bsemicolon\b": ";",
+        r"\bcolon\b": ":"
+    }
+    for command, symbol in commands.items():
+        transcription = re.sub(command, symbol, transcription, flags=re.IGNORECASE)
+    return transcription
+
+def correct_grammar(transcription):
+    tool = language_tool_python.LanguageTool("en-US")
+    matches = tool.check(transcription)
+    return language_tool_python.utils.correct(transcription, matches)
+
 def encode_audio_base64(path):
     with open(path, "rb") as f:
         return base64.b64encode(f.read()).decode("utf-8")
@@ -375,71 +394,42 @@ def transcribe_gemini(audio_path):
     ])
     return response.text.strip()
 
-def process_transcription(text):
-    commands = {
-        r"\bfull stop\b": ".",
-        r"\bPull stop\b": ".",
-        r"\bnext para\b": "\n",
-        r"\bnext paragraph\b": "\n",
-        r"\bcomma\b": ",",
-        r"\bsemicolon\b": ";",
-        r"\bcolon\b": ":"
-    }
-    for pattern, symbol in commands.items():
-        text = re.sub(pattern, symbol, text, flags=re.IGNORECASE)
-    return text
+# Streamlit App UI
+st.set_page_config(page_title="Gemini Audio Transcriber", layout="centered")
 
-def correct_grammar(text):
-    tool = language_tool_python.LanguageTool("en-US")
-    matches = tool.check(text)
-    return language_tool_python.utils.correct(text, matches)
+st.markdown('<h1 style="text-align: center; color: #007acc;">Gemini Audio Transcription</h1>', unsafe_allow_html=True)
+audio_file = st.file_uploader("Upload audio", type=["mp3", "wav", "m4a"])
 
-# ------------------ STREAMLIT UI ------------------
-
-st.set_page_config(page_title="Gemini Transcriber", layout="centered")
-
-st.markdown("""
-    <h1 style='text-align:center; color:#007acc;'>🎙️ Gemini Audio Transcription</h1>
-""", unsafe_allow_html=True)
-
-audio_file = st.file_uploader("Upload an audio file (mp3, wav, m4a)", type=["mp3", "wav", "m4a"])
-
-if st.button("Transcribe using Gemini 1.5 Flash"):
+if st.button("Transcribe"):
     if not audio_file:
-        st.warning("Please upload an audio file.")
+        st.warning("Upload an audio file first.")
     else:
         with st.spinner("Processing..."):
-            try:
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_input:
-                    temp_input.write(audio_file.read())
-                    temp_input_path = temp_input.name
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_input:
+                temp_input.write(audio_file.read())
+                temp_input_path = temp_input.name
 
-                temp_wav = "converted.wav"
-                denoised_wav = "denoised.wav"
+            temp_wav = "converted.wav"
+            denoised_wav = "denoised.wav"
 
-                convert_to_wav(temp_input_path, temp_wav)
-                denoise_audio(temp_wav, denoised_wav)
-                segments = split_audio(denoised_wav, segment_duration=300)
+            convert_to_wav(temp_input_path, temp_wav)
+            denoise_audio(temp_wav, denoised_wav)
+            segments = split_audio(denoised_wav)
 
-                final_text = ""
-                for i, segment in enumerate(segments):
-                    st.info(f"Transcribing segment {i + 1}/{len(segments)}...")
-                    raw_text = transcribe_gemini(segment)
-                    processed = process_transcription(raw_text)
-                    corrected = correct_grammar(processed)
-                    final_text += corrected + "\n"
-                    os.remove(segment)
+            combined = ""
+            for i, segment in enumerate(segments):
+                st.info(f"Transcribing segment {i+1}/{len(segments)}...")
+                raw = transcribe_gemini(segment)
+                processed = process_transcription(raw)
+                final = correct_grammar(processed)
+                combined += final + "\n"
+                os.remove(segment)
 
-                st.success("✅ Transcription Complete!")
-                st.text_area("Transcribed Text", final_text, height=300)
-                st.download_button("Download", final_text, file_name="transcription.txt")
+            st.success("Done.")
+            st.text_area("Transcription Result", combined, height=300)
 
-            except Exception as e:
-                st.error(f"Error: {e}")
+            st.download_button("Download", combined, file_name="gemini_transcription.txt")
 
-            finally:
-                for f in [temp_input_path, temp_wav, denoised_wav]:
-                    if os.path.exists(f):
-                        os.remove(f)
-
-
+            for file in [temp_input_path, temp_wav, denoised_wav]:
+                if os.path.exists(file):
+                    os.remove(file)
